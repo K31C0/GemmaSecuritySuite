@@ -1,5 +1,5 @@
 """
-gui_manager.py – CustomTkinter front-end for the Log Platform.
+gui_manager.py – CustomTkinter front-end for Gemma AI Security Suite.
 
 Provides the AppGUI class with six switchable frames:
   • Setup Screen       – progress bar + status label (shown during model download)
@@ -158,7 +158,7 @@ class AppGUI(ctk.CTk):
         frame.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkLabel(
-            frame, text="\u2699  Log Platform",
+            frame, text="\U0001f6e1\ufe0f  Gemma Security Suite",
             font=ctk.CTkFont(family="Segoe UI", size=28, weight="bold"),
             text_color=TEXT_PRIMARY,
         )

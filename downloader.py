@@ -15,7 +15,7 @@ from typing import Callable, Optional
 DEFAULT_DOWNLOAD_URL = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf?download=true"
 
 # Default destination inside the user's AppData folder.
-DEFAULT_DEST_DIR = os.path.join(os.environ.get("APPDATA", "."), "LogPlatform", "models")
+DEFAULT_DEST_DIR = os.path.join(os.environ.get("APPDATA", "."), "GemmaSecuritySuite", "models")
 DEFAULT_DEST_FILE = os.path.join(DEFAULT_DEST_DIR, "gemma-2-2b-it.gguf")
 
 

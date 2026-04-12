@@ -14,7 +14,7 @@ from llama_cpp import Llama
 
 # Same path convention as downloader.py.
 _DEFAULT_MODEL_DIR = os.path.join(
-    os.environ.get("APPDATA", "."), "LogPlatform", "models"
+    os.environ.get("APPDATA", "."), "GemmaSecuritySuite", "models"
 )
 _DEFAULT_MODEL_FILE = os.path.join(_DEFAULT_MODEL_DIR, "gemma-2-2b-it.gguf")
 

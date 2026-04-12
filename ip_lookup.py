@@ -35,7 +35,7 @@ def lookup_ip(ip_address: str, timeout: float = 5.0) -> Dict[str, str]:
     url = f"http://ip-api.com/json/{ip_address}"
     
     # ip-api.com blocks default Python urllib User-Agents, so we provide one.
-    headers = {"User-Agent": "LogPlatform-DiagnosticApp/1.0"}
+    headers = {"User-Agent": "GemmaSecuritySuite/1.0"}
 
     try:
         req = urllib.request.Request(url, headers=headers)

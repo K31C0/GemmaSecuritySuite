@@ -98,8 +98,8 @@ Built with a modular architecture that cleanly separates the UI layer from backe
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/gemma-ai-security-suite.git
-cd gemma-ai-security-suite
+git clone https://github.com/K31C0/GemmaSecuritySuite.git
+cd GemmaSecuritySuite
 
 # Install dependencies
 pip install customtkinter llama-cpp-python requests
@@ -108,7 +108,7 @@ pip install customtkinter llama-cpp-python requests
 python main.py
 ```
 
-On first launch, the app will automatically download the **Gemma 2 2B IT** model (~1.6 GB) from Hugging Face and store it in `%APPDATA%/LogPlatform/models/`.
+On first launch, the app will automatically download the **Gemma 2 2B IT** model (~1.6 GB) from Hugging Face and store it in `%APPDATA%/GemmaSecuritySuite/models/`.
 
 ### Dependencies
 
@@ -125,7 +125,7 @@ All other modules use the **Python standard library**: `threading`, `hashlib`, `
 ## 📂 Project Structure
 
 ```
-gemma-ai-security-suite/
+GemmaSecuritySuite/
 ├── main.py              # Entry point — orchestrates all tool wiring
 ├── gui_manager.py       # Full UI: 10 frames, animated dashboard, responsive grid
 ├── ai_inference.py      # LocalAI wrapper around Gemma 2 via llama-cpp-python
