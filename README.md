@@ -56,7 +56,8 @@ The application runs [Google's Gemma 2 2B](https://huggingface.co/bartowski/gemm
 | 🔍 **Environment Fingerprint** | Captures OS, running processes, network interfaces, ARP table, TCP connections, and Windows Event Log entries in a single snapshot. |
 | ⚠️ **YARA Rule Engine** | Pre-scans scripts against malware signatures before AI analysis. Bundled rules detect credential theft, persistence mechanisms, PowerShell cradles, and more. |
 | 🔒 **Evidence Vault** | AES-256-GCM encrypted storage for suspicious files. PBKDF2 key derivation (600k iterations), SHA-256 integrity verification, append-only manifest. |
-| 📄 **Incident Report Generator** | Exports all session findings (fingerprint, YARA, AI analyses, chat, vault, custody chain) as a professional self-contained HTML report. |
+| 📡 **PCAP Analyzer** | Offline parsing of network traffic (`.pcap`) extracting DNS queries, HTTP cleartext, TLS SNI hostnames, and detecting periodic C2 beaconing. |
+| 📄 **Incident Report Generator** | Exports all session findings (fingerprint, YARA, AI analyses, chat, vault, custody chain, PCAP) as a professional self-contained HTML report. |
 
 ### 🛡️ Portability & Security
 
@@ -268,7 +269,7 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 - [x] **Automated Environment Fingerprinting** — Snapshot host OS, processes, network state, ARP table, TCP connections, Windows Event Log
 - [x] **YARA Rule Engine** — Pre-scan scripts against malware signatures; bundled rules for credential theft, PowerShell cradles, persistence, network recon
 - [x] **Encrypted Evidence Vault** — AES-256-GCM encrypted storage with PBKDF2 (600k iter), SHA-256 verification, append-only manifest
-- [ ] **PCAP Traffic Analysis** — Offline `.pcap` parsing for DNS, HTTP, beaconing, TLS analysis
+- [x] **PCAP Traffic Analysis** — Offline `.pcap` parsing for DNS, HTTP, beaconing, TLS analysis
 - [x] **Automated Incident Reporting** — Export all session data as professional self-contained HTML reports
 
 ### Phase 3: AI Capabilities & UX
@@ -307,6 +308,7 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 | `IP2Location` | Offline IP geolocation database reader |
 | `yara-python` | YARA rule compilation and scanning engine |
 | `cryptography` | AES-256-GCM encryption for evidence vault |
+| `dpkt` | Pure-Python PCAP parsing and network protocol decoding |
 
 All other modules use the **Python standard library**: `threading`, `hashlib`, `subprocess`, `socket`, `csv`, `os`, `sys`, `configparser`, `tkinter`.
 

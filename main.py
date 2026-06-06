@@ -334,6 +334,13 @@ def main() -> None:
                 except Exception:
                     pass
 
+                # PCAP analysis.
+                try:
+                    if pcap_engine.available:
+                        report.add_pcap_analysis(pcap_engine.get_report_data())
+                except Exception:
+                    pass
+
                 # Custody chain.
                 try:
                     report.load_custody_from_file(custody.path)
@@ -384,6 +391,130 @@ def main() -> None:
         command=lambda: _generate_report("html"))
     app.report_pdf_button.configure(
         command=lambda: _generate_report("pdf"))
+
+    # ==================================================================
+    #  PCAP Analyzer wiring
+    # ==================================================================
+
+    from pcap_analyzer import PcapAnalyzer, DPKT_AVAILABLE
+    pcap_engine = PcapAnalyzer(custody_logger=custody)
+
+    def _load_pcap() -> None:
+        """Open file picker, load and analyse a PCAP file."""
+        from tkinter import filedialog as pcap_fd
+        pcap_path = pcap_fd.askopenfilename(
+            title="Select PCAP File",
+            filetypes=[
+                ("PCAP files", "*.pcap *.cap"),
+                ("All files", "*.*"),
+            ],
+            parent=app,
+        )
+        if not pcap_path:
+            return
+
+        if not DPKT_AVAILABLE:
+            app.write_pcap_output(
+                "ERROR: dpkt is not installed.\n"
+                "Install with: pip install dpkt\n", clear=True)
+            return
+
+        app.pcap_status_label.configure(
+            text=f"Loading: {os.path.basename(pcap_path)}...")
+        app.write_pcap_output("Loading PCAP file...\n", clear=True)
+        app.pcap_load_button.configure(state="disabled")
+
+        def _worker():
+            try:
+                count = pcap_engine.load(pcap_path)
+                summary = pcap_engine.summarize()
+
+                # Gather stats
+                dns_count = len(pcap_engine.extract_dns_queries())
+                http_count = len(pcap_engine.extract_http_cleartext())
+                sni_count = len(pcap_engine.extract_tls_sni())
+                beacon_count = len(pcap_engine.detect_beaconing())
+
+                def _update_ui():
+                    app.pcap_status_label.configure(
+                        text=f"Loaded: {os.path.basename(pcap_path)} "
+                             f"— {count:,} packets")
+                    app.update_pcap_stats(count, dns_count, http_count, sni_count)
+                    app.write_pcap_output(summary + "\n", clear=True)
+
+                    if beacon_count > 0:
+                        app.write_pcap_output(
+                            f"\n⚠  {beacon_count} beaconing pattern(s) detected!"
+                            f" Review the report above.\n")
+
+                app.after(0, _update_ui)
+
+            except Exception as exc:
+                custody.record("pcap_load_error", "pcap_analyzer",
+                               detail=str(exc))
+                app.after(0, app.write_pcap_output,
+                          f"Error loading PCAP: {exc}\n", True)
+                app.after(0, lambda: app.pcap_status_label.configure(
+                    text="Error loading PCAP file."))
+            finally:
+                app.after(0, lambda: app.pcap_load_button.configure(
+                    state="normal"))
+
+        import threading
+        threading.Thread(target=_worker, daemon=True,
+                         name="PcapLoad").start()
+
+    def _ai_analyze_pcap() -> None:
+        """Send PCAP summary to Gemma for AI-assisted forensic analysis."""
+        if not pcap_engine.available:
+            app.write_pcap_output(
+                "\nPlease load a PCAP file first.\n", False)
+            return
+
+        if local_ai.is_busy:
+            app.write_pcap_output(
+                "\nAn analysis is already running. Please wait.\n", False)
+            return
+
+        summary = pcap_engine.summarize()
+        custody.record("pcap_ai_analysis_start", "pcap_analyzer",
+                       detail=f"Summary length: {len(summary)} chars")
+
+        app.write_pcap_output(
+            "\n" + "─" * 70 + "\n"
+            "Sending to Gemma AI for forensic analysis...\n", False)
+        app.pcap_ai_button.configure(state="disabled")
+
+        def _on_result(result: str) -> None:
+            custody.record("pcap_ai_analysis_complete", "pcap_analyzer",
+                           detail=f"Result length: {len(result)} chars")
+            app.after(0, app.write_pcap_output,
+                      "\n─── AI Forensic Analysis " + "─" * 45 + "\n\n"
+                      + result + "\n", False)
+            app.after(0, lambda: app.pcap_ai_button.configure(state="normal"))
+
+        def _on_error(msg: str) -> None:
+            custody.record("pcap_ai_analysis_error", "pcap_analyzer",
+                           detail=msg)
+            app.after(0, app.write_pcap_output,
+                      f"\nAI Analysis error: {msg}\n", False)
+            app.after(0, lambda: app.pcap_ai_button.configure(state="normal"))
+
+        local_ai.analyze(
+            text=summary,
+            system_prompt=(
+                "You are a senior SOC analyst performing forensic traffic analysis. "
+                "Review this PCAP analysis report and provide:\n"
+                "1. Executive summary of findings\n"
+                "2. Suspicious indicators (C2, exfiltration, lateral movement)\n"
+                "3. Recommended next steps for the incident responder\n\n"
+            ),
+            on_complete=_on_result,
+            on_error=_on_error,
+        )
+
+    app.pcap_load_button.configure(command=_load_pcap)
+    app.pcap_ai_button.configure(command=_ai_analyze_pcap)
 
     # Initialise the YARA engine once at startup.
     from yara_scanner import YaraEngine

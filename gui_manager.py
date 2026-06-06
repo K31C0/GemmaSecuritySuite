@@ -1,13 +1,14 @@
 """
 gui_manager.py – CustomTkinter front-end for Gemma AI Security Suite.
 
-Provides the AppGUI class with six switchable frames:
+Provides the AppGUI class with switchable frames:
   • Setup Screen       – progress bar + status label (shown during model download)
-  • Dashboard          – 2×2 grid of tool cards
+  • Dashboard          – grid of tool cards
   • Log Analyzer       – load CSV, output area, analyze button
   • File Hash Verifier – select file, MD5/SHA-256 display
   • Network Diagnostics– IP/host entry, ping + port scan results
   • IP Reputation      – IP entry, geo/ISP/ASN display
+  • PCAP Analyzer      – load .pcap, traffic analysis, AI analyze
 """
 
 import customtkinter as ctk
@@ -85,6 +86,7 @@ class AppGUI(ctk.CTk):
         self._build_env_fingerprint()
         self._build_evidence_vault()
         self._build_report_generator()
+        self._build_pcap_analyzer()
 
         # Start on the setup screen.
         self._current_frame: Optional[str] = None
@@ -294,23 +296,16 @@ class AppGUI(ctk.CTk):
             )
             btn.grid(row=0, column=i, sticky="nsew", padx=12, pady=0)
 
-        # Row 3: forensic tools
-        row3_frame = ctk.CTkFrame(cards, fg_color="transparent")
-        row3_frame.grid(row=3, column=0, columnspan=4, sticky="nsew", pady=10)
-        row3_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-
-        row3_centered = ctk.CTkFrame(row3_frame, fg_color="transparent")
-        row3_centered.pack(expand=True, fill="both")
-        row3_centered.grid_columnconfigure((0, 1, 2), weight=1)
-
+        # Row 3: forensic tools (4 cards across)
         forensic_cards = [
             ("\U0001f50d  Environment Snapshot", "env_fingerprint",  0),
             ("\U0001f512  Evidence Vault",       "evidence_vault",   1),
             ("\U0001f4cb  Incident Report",      "report_gen",       2),
+            ("\U0001f4e1  PCAP Analyzer",        "pcap_analyzer",    3),
         ]
         for text, target, col in forensic_cards:
             btn = ctk.CTkButton(
-                row3_centered, text=text,
+                cards, text=text,
                 font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
                 fg_color=SURFACE, hover_color=SURFACE_ALT,
                 text_color=TEXT_PRIMARY, corner_radius=8,
@@ -318,7 +313,7 @@ class AppGUI(ctk.CTk):
                 border_width=1, border_color=BORDER_SUBTLE,
                 command=lambda t=target: self.show_frame(t),
             )
-            btn.grid(row=0, column=col, sticky="nsew", padx=12, pady=0)
+            btn.grid(row=3, column=col, sticky="nsew", padx=12, pady=10)
 
         # ── Seed animated background lines ───────────────────────────
         self._bg_lines: list[dict] = []
@@ -1491,6 +1486,126 @@ class AppGUI(ctk.CTk):
             height=48, width=100, border_width=0,
         )
         self.chat_send_button.grid(row=0, column=1)
+
+    # ==================================================================
+    #  PCAP Analyzer
+    # ==================================================================
+
+    def _build_pcap_analyzer(self) -> None:
+        frame = ctk.CTkFrame(self._container, fg_color=BG_DARK, corner_radius=0)
+        frame.grid(row=0, column=0, sticky="nsew")
+        self._frames["pcap_analyzer"] = frame
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(5, weight=1)  # results textbox
+
+        # -- Toolbar --
+        toolbar = self._make_toolbar(frame, "\U0001f4e1  PCAP Analyzer")
+        self._make_back_button(toolbar, self)
+        self._make_toolbar_title(toolbar, "\U0001f4e1  PCAP Analyzer")
+
+        self.pcap_load_button = ctk.CTkButton(
+            toolbar, text="\U0001f4c2  Load PCAP",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color="#ffffff", corner_radius=8,
+            height=36, border_width=0,
+        )
+        self.pcap_load_button.grid(row=0, column=3, padx=(8, 4), pady=12)
+
+        self.pcap_ai_button = ctk.CTkButton(
+            toolbar, text="\U0001f916  AI Analyze",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=HIGHLIGHT, hover_color=HIGHLIGHT_HOVER,
+            text_color="#ffffff", corner_radius=8,
+            height=36, border_width=0,
+        )
+        self.pcap_ai_button.grid(row=0, column=4, padx=(4, 12), pady=12)
+
+        # -- Info box --
+        self._make_info_box(
+            frame,
+            "\U0001f6c8  Offline PCAP traffic analysis: DNS queries, HTTP cleartext, "
+            "TLS SNI hostnames, and beaconing detection. Uses dpkt (pure Python).",
+        )
+
+        # -- Separator --
+        ctk.CTkFrame(frame, fg_color=BORDER_SUBTLE, height=1).grid(
+            row=2, column=0, sticky="ew", padx=24, pady=8)
+
+        # -- Status bar --
+        self.pcap_status_label = ctk.CTkLabel(
+            frame, text="No PCAP file loaded.",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY, anchor="w",
+        )
+        self.pcap_status_label.grid(row=3, column=0, sticky="ew",
+                                     padx=20, pady=(4, 0))
+
+        # -- Stats row --
+        stats_row = ctk.CTkFrame(frame, fg_color="transparent")
+        stats_row.grid(row=4, column=0, sticky="ew", padx=16, pady=(4, 4))
+        stats_row.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        self._pcap_stat_labels: dict[str, ctk.CTkLabel] = {}
+        for idx, (label, key) in enumerate([
+            ("Packets", "packets"),
+            ("DNS Queries", "dns"),
+            ("HTTP Requests", "http"),
+            ("TLS SNI", "sni"),
+        ]):
+            stat_frame = ctk.CTkFrame(
+                stats_row, fg_color=SURFACE, corner_radius=8,
+                border_width=1, border_color=BORDER_SUBTLE,
+            )
+            stat_frame.grid(row=0, column=idx, sticky="nsew", padx=4, pady=4)
+
+            ctk.CTkLabel(
+                stat_frame, text=label,
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=TEXT_SECONDARY,
+            ).pack(pady=(8, 2))
+
+            val_label = ctk.CTkLabel(
+                stat_frame, text="—",
+                font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
+                text_color=ACCENT,
+            )
+            val_label.pack(pady=(0, 8))
+            self._pcap_stat_labels[key] = val_label
+
+        # -- Results textbox --
+        self.pcap_output_textbox = ctk.CTkTextbox(
+            frame, font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=8, wrap="none",
+            state="disabled", activate_scrollbars=True,
+        )
+        self.pcap_output_textbox.grid(row=5, column=0, sticky="nsew",
+                                       padx=16, pady=(4, 16))
+
+    def write_pcap_output(self, text: str, clear: bool = False) -> None:
+        """Write text to the PCAP results output textbox."""
+        self.pcap_output_textbox.configure(state="normal")
+        if clear:
+            self.pcap_output_textbox.delete("1.0", "end")
+        self.pcap_output_textbox.insert("end", text)
+        self.pcap_output_textbox.configure(state="disabled")
+        self.pcap_output_textbox.see("end")
+
+    def update_pcap_stats(self, packets: int, dns: int, http: int, sni: int) -> None:
+        """Update the PCAP stat cards with numerical values."""
+        mapping = {
+            "packets": f"{packets:,}",
+            "dns": f"{dns:,}",
+            "http": f"{http:,}",
+            "sni": f"{sni:,}",
+        }
+        for key, val in mapping.items():
+            lbl = self._pcap_stat_labels.get(key)
+            if lbl:
+                lbl.configure(text=val)
 
 # ── Quick demo ────────────────────────────────────────────────────────
 if __name__ == "__main__":

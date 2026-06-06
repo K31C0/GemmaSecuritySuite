@@ -205,6 +205,7 @@ class IncidentReport:
         self._chat_history: str = ""
         self._vault_items: List[Dict[str, Any]] = []
         self._custody_entries: List[Dict[str, Any]] = []
+        self._pcap_data: Optional[Dict[str, Any]] = None
 
     # ── Data collection ──────────────────────────────────────────────
 
@@ -271,6 +272,16 @@ class IncidentReport:
     def add_custody_entries(self, entries: List[Dict[str, Any]]) -> None:
         """Add custody chain log entries."""
         self._custody_entries = entries
+
+    def add_pcap_analysis(self, pcap_data: Dict[str, Any]) -> None:
+        """Add PCAP traffic analysis results.
+
+        Parameters
+        ----------
+        pcap_data : dict
+            Output from ``PcapAnalyzer.get_report_data()``.
+        """
+        self._pcap_data = pcap_data
 
     def load_custody_from_file(self, log_path: str) -> None:
         """Load custody entries from a JSONL file."""
@@ -379,6 +390,7 @@ class IncidentReport:
         sections.append(self._render_env_fingerprint())
         sections.append(self._render_yara())
         sections.append(self._render_ai_analyses())
+        sections.append(self._render_pcap())
         sections.append(self._render_chat())
         sections.append(self._render_vault())
         sections.append(self._render_custody_summary())
@@ -501,6 +513,88 @@ class IncidentReport:
 
         return f"""<h2>4. AI Analysis Results</h2>
 {blocks}"""
+
+    def _render_pcap(self) -> str:
+        if not self._pcap_data:
+            return """<h2>4b. PCAP Traffic Analysis</h2>
+<p class="section-empty">No PCAP analysis performed.</p>"""
+
+        data = self._pcap_data
+        pkt_count = data.get("packet_count", 0)
+        total_bytes = data.get("total_bytes", 0)
+        file_path = data.get("file_path", "N/A")
+
+        dns_queries = data.get("dns_queries", [])
+        http_requests = data.get("http_requests", [])
+        tls_sni = data.get("tls_sni", [])
+        beacons = data.get("beacons", [])
+
+        # DNS table
+        dns_rows = ""
+        seen_dns = set()
+        for q in dns_queries:
+            qname = q.query_name if hasattr(q, 'query_name') else q.get('query_name', '?')
+            qtype = q.query_type if hasattr(q, 'query_type') else q.get('query_type', '?')
+            resp = ', '.join(q.response_ips if hasattr(q, 'response_ips') else q.get('response_ips', []))
+            if qname not in seen_dns:
+                seen_dns.add(qname)
+                dns_rows += f"<tr><td>{_esc(qname)}</td><td>{_esc(qtype)}</td><td>{_esc(resp or 'N/A')}</td></tr>\n"
+
+        # HTTP table
+        http_rows = ""
+        for req in http_requests[:30]:
+            method = req.method if hasattr(req, 'method') else req.get('method', '?')
+            host = req.host if hasattr(req, 'host') else req.get('host', '?')
+            uri = req.uri if hasattr(req, 'uri') else req.get('uri', '?')
+            ts = req.timestamp if hasattr(req, 'timestamp') else req.get('timestamp', '?')
+            http_rows += f"<tr><td>{_esc(ts)}</td><td>{_esc(method)}</td><td>{_esc(host)}</td><td>{_esc(uri)}</td></tr>\n"
+
+        # TLS SNI table
+        sni_rows = ""
+        for s in tls_sni:
+            server = s.server_name if hasattr(s, 'server_name') else s.get('server_name', '?')
+            dst = s.dst_ip if hasattr(s, 'dst_ip') else s.get('dst_ip', '?')
+            sni_rows += f"<tr><td>{_esc(server)}</td><td>{_esc(dst)}</td></tr>\n"
+
+        # Beaconing table
+        beacon_rows = ""
+        for b in beacons:
+            dst_ip = b.dst_ip if hasattr(b, 'dst_ip') else b.get('dst_ip', '?')
+            dst_port = b.dst_port if hasattr(b, 'dst_port') else b.get('dst_port', '?')
+            count = b.connection_count if hasattr(b, 'connection_count') else b.get('connection_count', '?')
+            avg = b.avg_interval_seconds if hasattr(b, 'avg_interval_seconds') else b.get('avg_interval_seconds', '?')
+            std = b.std_dev_seconds if hasattr(b, 'std_dev_seconds') else b.get('std_dev_seconds', '?')
+            beacon_rows += (f'<tr><td class="severity-high">{_esc(str(dst_ip))}:{dst_port}</td>'
+                           f"<td>{count}</td><td>{avg}s</td><td>{std}s</td></tr>\n")
+
+        beacon_section = ""
+        if beacon_rows:
+            beacon_section = f"""<h3>\u26a0 Beaconing Patterns Detected</h3>
+<table><tr><th>Destination</th><th>Connections</th><th>Avg Interval</th><th>Std Dev</th></tr>
+{beacon_rows}</table>"""
+
+        return f"""<h2>4b. PCAP Traffic Analysis</h2>
+<div class="meta-grid">
+  <div class="meta-item"><span class="meta-label">PCAP File</span>
+    <span class="meta-value">{_esc(str(file_path))}</span></div>
+  <div class="meta-item"><span class="meta-label">Total Packets</span>
+    <span class="meta-value">{pkt_count:,}</span></div>
+  <div class="meta-item"><span class="meta-label">Capture Size</span>
+    <span class="meta-value">{total_bytes:,} bytes</span></div>
+</div>
+<h3>DNS Queries ({len(seen_dns)} unique)</h3>
+<table><tr><th>Domain</th><th>Type</th><th>Response IPs</th></tr>
+{dns_rows if dns_rows else '<tr><td colspan="3" class="section-empty">No DNS queries.</td></tr>'}
+</table>
+<h3>HTTP Cleartext ({len(http_requests)})</h3>
+<table><tr><th>Timestamp</th><th>Method</th><th>Host</th><th>URI</th></tr>
+{http_rows if http_rows else '<tr><td colspan="4" class="section-empty">No cleartext HTTP.</td></tr>'}
+</table>
+<h3>TLS SNI Hostnames ({len(tls_sni)})</h3>
+<table><tr><th>Server Name</th><th>Destination IP</th></tr>
+{sni_rows if sni_rows else '<tr><td colspan="2" class="section-empty">No TLS SNI fields.</td></tr>'}
+</table>
+{beacon_section}"""
 
     def _render_chat(self) -> str:
         if not self._chat_history:
