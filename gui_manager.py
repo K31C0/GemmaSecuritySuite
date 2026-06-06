@@ -69,6 +69,9 @@ class AppGUI(ctk.CTk):
         # ── Build all frames (stacked on top of each other) ──────────
         self._frames: dict[str, ctk.CTkFrame] = {}
 
+        # Optional forensic logger — set by main.py after construction.
+        self.custody_logger = None
+
         self._build_setup_screen()
         self._build_dashboard()
         self._build_main_app()
@@ -79,6 +82,9 @@ class AppGUI(ctk.CTk):
         self._build_regex_wizard()
         self._build_phishing_analyzer()
         self._build_chat_assistant()
+        self._build_env_fingerprint()
+        self._build_evidence_vault()
+        self._build_report_generator()
 
         # Start on the setup screen.
         self._current_frame: Optional[str] = None
@@ -288,6 +294,32 @@ class AppGUI(ctk.CTk):
             )
             btn.grid(row=0, column=i, sticky="nsew", padx=12, pady=0)
 
+        # Row 3: forensic tools
+        row3_frame = ctk.CTkFrame(cards, fg_color="transparent")
+        row3_frame.grid(row=3, column=0, columnspan=4, sticky="nsew", pady=10)
+        row3_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
+        row3_centered = ctk.CTkFrame(row3_frame, fg_color="transparent")
+        row3_centered.pack(expand=True, fill="both")
+        row3_centered.grid_columnconfigure((0, 1, 2), weight=1)
+
+        forensic_cards = [
+            ("\U0001f50d  Environment Snapshot", "env_fingerprint",  0),
+            ("\U0001f512  Evidence Vault",       "evidence_vault",   1),
+            ("\U0001f4cb  Incident Report",      "report_gen",       2),
+        ]
+        for text, target, col in forensic_cards:
+            btn = ctk.CTkButton(
+                row3_centered, text=text,
+                font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+                fg_color=SURFACE, hover_color=SURFACE_ALT,
+                text_color=TEXT_PRIMARY, corner_radius=8,
+                height=110,
+                border_width=1, border_color=BORDER_SUBTLE,
+                command=lambda t=target: self.show_frame(t),
+            )
+            btn.grid(row=0, column=col, sticky="nsew", padx=12, pady=0)
+
         # ── Seed animated background lines ───────────────────────────
         self._bg_lines: list[dict] = []
         self._dash_canvas.update_idletasks()       # ensure winfo is valid
@@ -344,6 +376,323 @@ class AppGUI(ctk.CTk):
             canvas.itemconfig(line["id"], fill=line["colour"])
 
         self.after(30, self._animate_background)
+
+    # ==================================================================
+    #  Environment Fingerprint
+    # ==================================================================
+
+    def _build_env_fingerprint(self) -> None:
+        frame = ctk.CTkFrame(self._container, fg_color=BG_DARK, corner_radius=0)
+        frame.grid(row=0, column=0, sticky="nsew")
+        self._frames["env_fingerprint"] = frame
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(3, weight=1)
+
+        # ── Toolbar ──────────────────────────────────────────────────
+        toolbar = self._make_toolbar(frame, "\U0001f50d  Environment Snapshot")
+        self._make_back_button(toolbar, self)
+        self._make_toolbar_title(toolbar, "\U0001f50d  Environment Snapshot")
+
+        self.env_capture_button = ctk.CTkButton(
+            toolbar, text="\U0001f4f7  Capture Snapshot",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color="#ffffff", corner_radius=8,
+            height=36, border_width=0,
+        )
+        self.env_capture_button.grid(row=0, column=3, padx=(8, 12), pady=12)
+
+        # ── Info box ─────────────────────────────────────────────────
+        self._make_info_box(
+            frame,
+            "\U0001f6c8  Captures a full snapshot of the host: OS, processes, "
+            "network interfaces, ARP table, TCP connections, and recent events.",
+        )
+
+        # ── Separator ────────────────────────────────────────────────
+        ctk.CTkFrame(frame, fg_color=BORDER_SUBTLE, height=1).grid(
+            row=2, column=0, sticky="ew", padx=24, pady=8)
+
+        # ── Results textbox ──────────────────────────────────────────
+        self.env_output_textbox = ctk.CTkTextbox(
+            frame, font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=8, wrap="none",
+            state="disabled", activate_scrollbars=True,
+        )
+        self.env_output_textbox.grid(row=3, column=0, sticky="nsew",
+                                      padx=16, pady=(4, 16))
+
+    def write_env_output(self, text: str, clear: bool = False) -> None:
+        """Write text to the environment snapshot output textbox."""
+        self.env_output_textbox.configure(state="normal")
+        if clear:
+            self.env_output_textbox.delete("1.0", "end")
+        self.env_output_textbox.insert("end", text)
+        self.env_output_textbox.configure(state="disabled")
+        self.env_output_textbox.see("end")
+
+    # ==================================================================
+    #  Evidence Vault
+    # ==================================================================
+
+    def _build_evidence_vault(self) -> None:
+        frame = ctk.CTkFrame(self._container, fg_color=BG_DARK, corner_radius=0)
+        frame.grid(row=0, column=0, sticky="nsew")
+        self._frames["evidence_vault"] = frame
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(5, weight=1)  # item list row
+
+        # -- Toolbar --
+        toolbar = self._make_toolbar(frame, "\U0001f512  Evidence Vault")
+        self._make_back_button(toolbar, self)
+        self._make_toolbar_title(toolbar, "\U0001f512  Evidence Vault")
+
+        # -- Info box --
+        self._make_info_box(
+            frame,
+            "\U0001f6c8  AES-256-GCM encrypted storage for malicious files "
+            "and forensic evidence. Files are password-protected and "
+            "integrity-verified.",
+        )
+
+        # -- Separator --
+        ctk.CTkFrame(frame, fg_color=BORDER_SUBTLE, height=1).grid(
+            row=2, column=0, sticky="ew", padx=24, pady=8)
+
+        # -- Controls row --
+        controls = ctk.CTkFrame(frame, fg_color="transparent")
+        controls.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 8))
+        controls.grid_columnconfigure(1, weight=1)
+
+        # Password field
+        pw_label = ctk.CTkLabel(
+            controls, text="Password:",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY,
+        )
+        pw_label.grid(row=0, column=0, padx=(0, 8), pady=4)
+
+        self.vault_password_entry = ctk.CTkEntry(
+            controls, show="*",
+            font=ctk.CTkFont(family="Consolas", size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=6, height=36,
+            placeholder_text="Enter vault password...",
+        )
+        self.vault_password_entry.grid(row=0, column=1, sticky="ew",
+                                        padx=4, pady=4)
+
+        # Store button
+        self.vault_store_button = ctk.CTkButton(
+            controls, text="\U0001f4e5  Store File",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color="#ffffff", corner_radius=8,
+            height=36, border_width=0,
+        )
+        self.vault_store_button.grid(row=0, column=2, padx=(8, 4), pady=4)
+
+        # Extract button
+        self.vault_extract_button = ctk.CTkButton(
+            controls, text="\U0001f4e4  Extract Selected",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=SURFACE, hover_color=SURFACE_ALT,
+            text_color=TEXT_PRIMARY, corner_radius=8,
+            height=36, border_width=1, border_color=BORDER_SUBTLE,
+        )
+        self.vault_extract_button.grid(row=0, column=3, padx=(4, 0), pady=4)
+
+        # Refresh button
+        self.vault_refresh_button = ctk.CTkButton(
+            controls, text="\U0001f504",
+            font=ctk.CTkFont(size=16),
+            fg_color=SURFACE, hover_color=SURFACE_ALT,
+            text_color=TEXT_PRIMARY, corner_radius=8,
+            width=36, height=36, border_width=1, border_color=BORDER_SUBTLE,
+        )
+        self.vault_refresh_button.grid(row=0, column=4, padx=(8, 0), pady=4)
+
+        # -- Notes entry --
+        notes_row = ctk.CTkFrame(frame, fg_color="transparent")
+        notes_row.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 4))
+        notes_row.grid_columnconfigure(1, weight=1)
+
+        notes_label = ctk.CTkLabel(
+            notes_row, text="Notes:",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY,
+        )
+        notes_label.grid(row=0, column=0, padx=(0, 8), pady=4)
+
+        self.vault_notes_entry = ctk.CTkEntry(
+            notes_row,
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=6, height=36,
+            placeholder_text="Analyst notes for this evidence item...",
+        )
+        self.vault_notes_entry.grid(row=0, column=1, sticky="ew", pady=4)
+
+        # -- Item list (scrollable textbox) --
+        self.vault_list_textbox = ctk.CTkTextbox(
+            frame, font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=8, wrap="none",
+            state="disabled", activate_scrollbars=True,
+        )
+        self.vault_list_textbox.grid(row=5, column=0, sticky="nsew",
+                                      padx=16, pady=(4, 8))
+
+        # -- Status bar --
+        self.vault_status_label = ctk.CTkLabel(
+            frame, text="No items in vault.",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=TEXT_SECONDARY, anchor="w",
+        )
+        self.vault_status_label.grid(row=6, column=0, sticky="ew",
+                                      padx=20, pady=(0, 12))
+
+    def write_vault_list(self, text: str, clear: bool = False) -> None:
+        """Write text to the vault item list textbox."""
+        self.vault_list_textbox.configure(state="normal")
+        if clear:
+            self.vault_list_textbox.delete("1.0", "end")
+        self.vault_list_textbox.insert("end", text)
+        self.vault_list_textbox.configure(state="disabled")
+
+    # ==================================================================
+    #  Incident Report Generator
+    # ==================================================================
+
+    def _build_report_generator(self) -> None:
+        frame = ctk.CTkFrame(self._container, fg_color=BG_DARK, corner_radius=0)
+        frame.grid(row=0, column=0, sticky="nsew")
+        self._frames["report_gen"] = frame
+
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(5, weight=1)
+
+        # -- Toolbar --
+        toolbar = self._make_toolbar(frame, "\U0001f4cb  Incident Report")
+        self._make_back_button(toolbar, self)
+        self._make_toolbar_title(toolbar, "\U0001f4cb  Incident Report")
+
+        # -- Info box --
+        self._make_info_box(
+            frame,
+            "\U0001f6c8  Generates a comprehensive HTML incident report "
+            "containing all findings, analyses, and custody chain data "
+            "from this session.",
+        )
+
+        # -- Separator --
+        ctk.CTkFrame(frame, fg_color=BORDER_SUBTLE, height=1).grid(
+            row=2, column=0, sticky="ew", padx=24, pady=8)
+
+        # -- Fields --
+        fields = ctk.CTkFrame(frame, fg_color="transparent")
+        fields.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 8))
+        fields.grid_columnconfigure(1, weight=1)
+
+        # Case ID
+        ctk.CTkLabel(
+            fields, text="Case ID:",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY,
+        ).grid(row=0, column=0, padx=(0, 8), pady=4, sticky="e")
+
+        self.report_case_entry = ctk.CTkEntry(
+            fields,
+            font=ctk.CTkFont(family="Consolas", size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=6, height=36,
+            placeholder_text="IR-2026-001",
+        )
+        self.report_case_entry.grid(row=0, column=1, sticky="ew", pady=4)
+
+        # Analyst
+        ctk.CTkLabel(
+            fields, text="Analyst:",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY,
+        ).grid(row=1, column=0, padx=(0, 8), pady=4, sticky="e")
+
+        self.report_analyst_entry = ctk.CTkEntry(
+            fields,
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=6, height=36,
+            placeholder_text="SOC Analyst",
+        )
+        self.report_analyst_entry.grid(row=1, column=1, sticky="ew", pady=4)
+
+        # Notes
+        ctk.CTkLabel(
+            fields, text="Notes:",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color=TEXT_SECONDARY,
+        ).grid(row=2, column=0, padx=(0, 8), pady=4, sticky="e")
+
+        self.report_notes_entry = ctk.CTkEntry(
+            fields,
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=6, height=36,
+            placeholder_text="Additional case notes...",
+        )
+        self.report_notes_entry.grid(row=2, column=1, sticky="ew", pady=4)
+
+        # -- Buttons --
+        btn_row = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_row.grid(row=4, column=0, sticky="ew", padx=16, pady=(4, 8))
+
+        self.report_html_button = ctk.CTkButton(
+            btn_row, text="\U0001f4c4  Generate HTML Report",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color="#ffffff", corner_radius=8,
+            height=42, border_width=0,
+        )
+        self.report_html_button.pack(side="left", padx=(0, 12))
+
+        self.report_pdf_button = ctk.CTkButton(
+            btn_row, text="\U0001f4d1  Generate PDF",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            fg_color=SURFACE, hover_color=SURFACE_ALT,
+            text_color=TEXT_PRIMARY, corner_radius=8,
+            height=42, border_width=1, border_color=BORDER_SUBTLE,
+        )
+        self.report_pdf_button.pack(side="left", padx=(0, 12))
+
+        # -- Output textbox --
+        self.report_output_textbox = ctk.CTkTextbox(
+            frame, font=ctk.CTkFont(family="Consolas", size=12),
+            fg_color=SURFACE, text_color=TEXT_PRIMARY,
+            border_color=BORDER_SUBTLE, border_width=1,
+            corner_radius=8, wrap="word",
+            state="disabled", activate_scrollbars=True,
+        )
+        self.report_output_textbox.grid(row=5, column=0, sticky="nsew",
+                                         padx=16, pady=(4, 16))
+
+    def write_report_output(self, text: str, clear: bool = False) -> None:
+        """Write text to the report output textbox."""
+        self.report_output_textbox.configure(state="normal")
+        if clear:
+            self.report_output_textbox.delete("1.0", "end")
+        self.report_output_textbox.insert("end", text)
+        self.report_output_textbox.configure(state="disabled")
+        self.report_output_textbox.see("end")
 
     # ==================================================================
     #  Log Analyzer (Main App)
@@ -756,6 +1105,11 @@ class AppGUI(ctk.CTk):
         ip = self.ip_entry.get().strip()
         if not ip:
             return
+
+        if self.custody_logger:
+            self.custody_logger.record("ip_lookup_start", "ip_lookup",
+                                       target=ip)
+
         # Show "Looking up..." immediately
         for field in self._ip_result_fields.values():
             field.configure(state="normal")
@@ -770,13 +1124,27 @@ class AppGUI(ctk.CTk):
                 data = lookup_ip(ip)
                 if "Error" in data:
                     err = data["Error"]
+                    if self.custody_logger:
+                        self.custody_logger.record("ip_lookup_error",
+                                                    "ip_lookup",
+                                                    target=ip, detail=err)
                     self.after(0, self.set_ip_result, {
                         "Country": err, "City": "N/A",
                         "ISP": "N/A", "AS": "N/A",
                     })
                 else:
+                    if self.custody_logger:
+                        self.custody_logger.record(
+                            "ip_lookup_complete", "ip_lookup",
+                            target=ip,
+                            detail=f"{data.get('Country', '?')}, "
+                                   f"{data.get('City', '?')}, "
+                                   f"{data.get('ISP', '?')}")
                     self.after(0, self.set_ip_result, data)
             except Exception as exc:
+                if self.custody_logger:
+                    self.custody_logger.record("ip_lookup_error", "ip_lookup",
+                                               target=ip, detail=str(exc))
                 self.after(0, self.set_ip_result, {
                     "Country": f"Error: {exc}", "City": "N/A",
                     "ISP": "N/A", "AS": "N/A",

@@ -48,7 +48,17 @@ The application runs [Google's Gemma 2 2B](https://huggingface.co/bartowski/gemm
 | 🌐 **Network Diagnostics** | Runs ICMP ping tests and TCP port scans (HTTP, HTTPS, SSH, RDP, etc.) against any host or IP address. |
 | 🌍 **IP Reputation Lookup** | Fully offline IP geolocation and ASN lookup via bundled IP2Location LITE database — no network calls required. |
 
-### 🔒 Portability & Security
+### 🔬 Forensic & Incident Response Tools
+
+| Tool | Description |
+|------|-------------|
+| 📋 **Chain of Custody Logger** | Append-only JSONL audit trail with SHA-256 integrity verification. Every toolkit action is logged for forensic defensibility. |
+| 🔍 **Environment Fingerprint** | Captures OS, running processes, network interfaces, ARP table, TCP connections, and Windows Event Log entries in a single snapshot. |
+| ⚠️ **YARA Rule Engine** | Pre-scans scripts against malware signatures before AI analysis. Bundled rules detect credential theft, persistence mechanisms, PowerShell cradles, and more. |
+| 🔒 **Evidence Vault** | AES-256-GCM encrypted storage for suspicious files. PBKDF2 key derivation (600k iterations), SHA-256 integrity verification, append-only manifest. |
+| 📄 **Incident Report Generator** | Exports all session findings (fingerprint, YARA, AI analyses, chat, vault, custody chain) as a professional self-contained HTML report. |
+
+### 🛡️ Portability & Security
 
 | Feature | Description |
 |---------|-------------|
@@ -91,6 +101,14 @@ The application runs [Google's Gemma 2 2B](https://huggingface.co/bartowski/gemm
 │  │ (IP2Location) │  │ (Threaded HuggingFace download)     │      │
 │  │ 100% offline  │  │ Portable model storage              │      │
 │  └──────────────┘  └─────────────────────────────────────┘      │
+│                                                                  │
+│  ┌─────────────────── Forensic Layer ──────────────────────┐    │
+│  │ custody_logger.py  │ env_fingerprint.py │ yara_scanner   │    │
+│  │ (JSONL + SHA-256)  │ (OS/Net snapshot)  │ (.yar rules)   │    │
+│  ├────────────────────┼────────────────────┼────────────────┤    │
+│  │ evidence_vault.py  │ report_generator   │                │    │
+│  │ (AES-256-GCM)      │ (HTML/PDF export)  │                │    │
+│  └────────────────────┴────────────────────┴────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -165,7 +183,7 @@ On first launch, the app will:
 GemmaSecuritySuite/
 ├── main.py                # Entry point — orchestrates all tool wiring
 ├── config.py              # Portable path resolver (zero host footprint)
-├── gui_manager.py         # Full UI: 10 frames, animated dashboard, responsive grid
+├── gui_manager.py         # Full UI: 14 frames, animated dashboard, responsive grid
 ├── ai_inference.py        # LocalAI wrapper — Gemma 2 via llama-cpp-python
 ├── hardware_profiler.py   # Auto-detects CUDA/CPU/RAM, configures LLM
 ├── downloader.py          # Threaded model downloader with progress callbacks
@@ -173,16 +191,22 @@ GemmaSecuritySuite/
 ├── hash_checker.py        # MD5/SHA-256 file hashing (chunked, memory-safe)
 ├── network_scanner.py     # ICMP ping + TCP port scan diagnostics
 ├── ip_lookup.py           # Offline IP geolocation via IP2Location LITE
+├── custody_logger.py      # Forensic chain of custody (JSONL + SHA-256 sidecar)
+├── env_fingerprint.py     # Environment snapshot (OS/procs/network/ARP/events)
+├── yara_scanner.py        # YARA rule engine with graceful fallback
+├── evidence_vault.py      # AES-256-GCM encrypted evidence storage
+├── report_generator.py    # Automated incident report (HTML/PDF) generation
 ├── GemmaSecuritySuite.spec # PyInstaller build configuration
+├── requirements.txt       # Python package dependencies
 └── data/                  # Portable data directory (on USB drive)
     ├── models/            #   GGUF model files
     ├── databases/         #   IP2Location BIN files
-    ├── logs/              #   Chain of custody logs (Phase 2)
-    ├── evidence/          #   Encrypted evidence vault (Phase 2)
-    ├── exports/           #   PDF/HTML incident reports (Phase 2)
+    ├── logs/              #   Chain of custody logs + env fingerprints
+    ├── evidence/          #   Encrypted .vault files + manifest
+    ├── exports/           #   Generated HTML/PDF reports
     ├── playbooks/         #   RAG source PDFs (Phase 3)
-    └── yara_rules/        #   YARA signature files (Phase 2)
-        ├── community/     #     Bundled community rules
+    └── yara_rules/        #   YARA signature files
+        ├── community/     #     Bundled rules (ir_essentials.yar)
         └── custom/        #     Analyst's own rules
 ```
 
@@ -238,14 +262,14 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 - [x] **Hardware Auto-Profiling** — Auto-detect CUDA/CPU/RAM, configure LLM for optimal performance
 - [ ] **Standalone Binary** — PyInstaller `.exe` compilation (deferred to end of project)
 
-### Phase 2: Enterprise Forensics & Incident Response
+### Phase 2: Enterprise Forensics & Incident Response ✅
 
-- [ ] **Immutable Chain of Custody Logging** — Append-only JSONL audit trail with SHA-256 self-integrity
-- [ ] **Automated Environment Fingerprinting** — Snapshot host OS, processes, network state on boot
-- [ ] **YARA Rule Engine** — Scan files/scripts against malware signatures before AI analysis
-- [ ] **Encrypted Evidence Vault** — AES-256-GCM encrypted storage for suspicious files
+- [x] **Immutable Chain of Custody Logging** — Append-only JSONL audit trail with SHA-256 sidecar integrity verification
+- [x] **Automated Environment Fingerprinting** — Snapshot host OS, processes, network state, ARP table, TCP connections, Windows Event Log
+- [x] **YARA Rule Engine** — Pre-scan scripts against malware signatures; bundled rules for credential theft, PowerShell cradles, persistence, network recon
+- [x] **Encrypted Evidence Vault** — AES-256-GCM encrypted storage with PBKDF2 (600k iter), SHA-256 verification, append-only manifest
 - [ ] **PCAP Traffic Analysis** — Offline `.pcap` parsing for DNS, HTTP, beaconing, TLS analysis
-- [ ] **Automated Incident Reporting** — Export session data as professional PDF/HTML reports
+- [x] **Automated Incident Reporting** — Export all session data as professional self-contained HTML reports
 
 ### Phase 3: AI Capabilities & UX
 
@@ -279,8 +303,10 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 |---------|---------|
 | `customtkinter` | Modern dark-themed GUI framework |
 | `llama-cpp-python` | Local GGUF model inference engine |
-| `psutil` | Hardware detection and resource monitoring |
+| `psutil` | Hardware detection, process/network enumeration |
 | `IP2Location` | Offline IP geolocation database reader |
+| `yara-python` | YARA rule compilation and scanning engine |
+| `cryptography` | AES-256-GCM encryption for evidence vault |
 
 All other modules use the **Python standard library**: `threading`, `hashlib`, `subprocess`, `socket`, `csv`, `os`, `sys`, `configparser`, `tkinter`.
 

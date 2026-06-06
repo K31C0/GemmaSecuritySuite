@@ -36,6 +36,11 @@ MANIFEST
 # GemmaSecuritySuite – portable data directory (models, databases, evidence, logs)
 # These are large binary files and sensitive forensic data that must NOT be committed.
 data/
+# Exception: bundled YARA rules are small text files and part of the distribution.
+!data/yara_rules/
+!data/yara_rules/community/
+!data/yara_rules/community/*.yar
+!data/yara_rules/custom/
 config.ini
 
 # Installer logs
