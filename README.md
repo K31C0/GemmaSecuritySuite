@@ -273,14 +273,6 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 - [x] **PCAP Traffic Analysis** — Offline `.pcap` parsing for DNS, HTTP, beaconing, TLS analysis
 - [x] **Automated Incident Reporting** — Export all session data as professional self-contained HTML reports
 
-### Phase 4: Plug-and-Play Launcher & Resilience ✅
-
-- [x] **Zero-Friction USB Launcher** — Single-click `Launch.bat` and `bootstrap.py` preflight checks verify environment dependencies before boot.
-- [x] **Module Health Checks & Auto-Recovery** — Centralized watchdog monitors all backend engines. Automatically reloads models, rules, and rotates logs upon failure.
-- [x] **Session Auto-Save & Restoration** — Prevents data loss during host reboots/crashes by periodically saving UI state and chat history.
-- [x] **Graceful Degradation** — If a dependency is missing on an isolated machine, the specific tool disables itself (with a helpful UI hint) rather than crashing the application.
-- [x] **UI Polish** — Toast notifications, degraded-state UI cards, AI output streaming, contextual right-click menus, and keyboard shortcuts.
-
 ### Phase 3: AI Capabilities & UX
 
 - [ ] **Dynamic Context Window Management** — Auto-summarize old chat history to prevent context overflow
@@ -290,6 +282,14 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 - [ ] **Panic Button / Kill Switch** — Instant graceful termination leaving no trace
 - [ ] **Process Tree Visualization** — Visual parent-child process mapping for suspicious activity
 - [ ] **Colorblind & High-Contrast Modes** — Enterprise accessibility compliance
+
+### Phase 4: Plug-and-Play Launcher & Resilience ✅
+
+- [x] **Zero-Friction USB Launcher** — Single-click `Launch.bat` and `bootstrap.py` preflight checks verify environment dependencies before boot.
+- [x] **Module Health Checks & Auto-Recovery** — Centralized watchdog monitors all backend engines. Automatically reloads models, rules, and rotates logs upon failure.
+- [x] **Session Auto-Save & Restoration** — Prevents data loss during host reboots/crashes by periodically saving UI state and chat history.
+- [x] **Graceful Degradation** — If a dependency is missing on an isolated machine, the specific tool disables itself (with a helpful UI hint) rather than crashing the application.
+- [x] **UI Polish** — Toast notifications, degraded-state UI cards, AI output streaming, contextual right-click menus, and keyboard shortcuts.
 
 ---
 
