@@ -12,11 +12,10 @@ from typing import Callable, Optional
 
 from llama_cpp import Llama
 
-# Same path convention as downloader.py.
-_DEFAULT_MODEL_DIR = os.path.join(
-    os.environ.get("APPDATA", "."), "GemmaSecuritySuite", "models"
-)
-_DEFAULT_MODEL_FILE = os.path.join(_DEFAULT_MODEL_DIR, "gemma-2-2b-it.gguf")
+from config import MODEL_FILE
+
+# Portable model path resolved from config.py (relative to toolkit root).
+_DEFAULT_MODEL_FILE = MODEL_FILE
 
 
 class LocalAI:
@@ -25,8 +24,8 @@ class LocalAI:
     Parameters
     ----------
     model_path : str, optional
-        Path to the ``.gguf`` model file.  Defaults to the same
-        AppData location used by ``downloader.py``.
+        Path to the ``.gguf`` model file.  Defaults to the portable
+        ``data/models/`` directory resolved by ``config.py``.
     """
 
     def __init__(self, model_path: str = _DEFAULT_MODEL_FILE) -> None:
@@ -92,6 +91,10 @@ class LocalAI:
     def _load_model(self) -> None:
         """Initialise the Llama instance from the GGUF file on disk.
 
+        Uses :mod:`hardware_profiler` to auto-detect the host's compute
+        capabilities and configure ``llama-cpp-python`` for optimal
+        performance (GPU offload, thread count, batch size).
+
         Raises
         ------
         FileNotFoundError
@@ -104,12 +107,16 @@ class LocalAI:
                 f"Model not found: {self.model_path}\n"
                 "Please download it first from the Setup screen."
             )
+
+        # Auto-detect hardware and derive optimal Llama() parameters.
+        from hardware_profiler import detect_hardware, get_llama_kwargs
+        self.hw_profile = detect_hardware()
+        llama_kwargs = get_llama_kwargs(self.hw_profile)
+
         try:
             self.llm = Llama(
                 model_path=self.model_path,
-                n_ctx=8192,
-                n_threads=4,
-                verbose=False,
+                **llama_kwargs,
             )
         except Exception as exc:
             raise RuntimeError(

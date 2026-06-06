@@ -30,7 +30,13 @@ MANIFEST
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
-*.spec
+# Keep GemmaSecuritySuite.spec in version control (needed for builds).
+# *.spec
+
+# GemmaSecuritySuite – portable data directory (models, databases, evidence, logs)
+# These are large binary files and sensitive forensic data that must NOT be committed.
+data/
+config.ini
 
 # Installer logs
 pip-log.txt

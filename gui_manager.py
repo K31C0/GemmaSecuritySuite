@@ -680,7 +680,7 @@ class AppGUI(ctk.CTk):
         # ── Info box ─────────────────────────────────────────────────
         self._make_info_box(
             frame,
-            "\U0001f6c8  Identifies the geographical location and ISP of an IP address.",
+            "\U0001f6c8  Offline IP geolocation and ASN lookup via local IP2Location LITE database.",
         )
 
         # ── Separator ────────────────────────────────────────────────
@@ -743,6 +743,14 @@ class AppGUI(ctk.CTk):
 
             key = label_text.split("(")[0].strip()  # "Organization (AS)" -> "Organization"
             self._ip_result_fields[key] = entry
+
+        # ── Attribution (required by IP2Location LITE license) ───────
+        ctk.CTkLabel(
+            results, text="Data: IP2Location LITE \u2014 https://lite.ip2location.com",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=TEXT_SECONDARY,
+        ).grid(row=len(["Country", "City", "ISP", "Organization (AS)"]),
+               column=0, columnspan=2, sticky="w", pady=(16, 0))
 
     def _on_ip_lookup(self) -> None:
         ip = self.ip_entry.get().strip()

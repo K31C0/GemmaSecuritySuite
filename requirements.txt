@@ -1,0 +1,7 @@
+# GemmaSecuritySuite — Core Dependencies
+# Install: pip install -r requirements.txt
+
+customtkinter>=5.2.0
+llama-cpp-python>=0.2.0
+psutil>=5.9.0
+IP2Location>=8.10.0

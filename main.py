@@ -12,8 +12,14 @@ from downloader import ModelManager
 from gui_manager import AppGUI
 from typing import Optional
 
+import config
+
 
 def main() -> None:
+    # Ensure the portable data/ directory tree exists on the USB drive
+    # before any module tries to read or write files.
+    config.ensure_dirs()
+
     app = AppGUI()
     mgr = ModelManager()
     local_ai = LocalAI()          # persistent instance, shared across audits
@@ -45,16 +51,37 @@ def main() -> None:
         app.after(3000, lambda: app.show_frame("dashboard"))
 
     def _start() -> None:
-        if mgr.file_exists():
-            app.set_setup_progress(1.0)
-            app.set_setup_status("Model already present.")
-            app.after(400, lambda: app.show_frame("dashboard"))
-        else:
-            app.set_setup_status("Starting download\u2026")
-            mgr.ensure_file(
-                progress_callback=on_progress,
-                done_callback=on_done,
-            )
+        # Run hardware detection first and show results on setup screen.
+        from hardware_profiler import detect_hardware
+        import threading
+
+        def _detect_and_continue():
+            profile = detect_hardware()
+            summary = profile.summary
+
+            def _show_and_proceed():
+                app.set_setup_status(f"Detected: {summary}")
+                app.after(1200, _check_model)
+
+            app.after(0, _show_and_proceed)
+
+        def _check_model():
+            if mgr.file_exists():
+                app.set_setup_progress(1.0)
+                app.set_setup_status("Model already present. Launching...")
+                app.after(400, lambda: app.show_frame("dashboard"))
+            else:
+                app.set_setup_status("Starting download\u2026")
+                mgr.ensure_file(
+                    progress_callback=on_progress,
+                    done_callback=on_done,
+                )
+
+        # Kick off hardware detection on a background thread.
+        threading.Thread(
+            target=_detect_and_continue, daemon=True,
+            name="HardwareDetect"
+        ).start()
 
     # ==================================================================
     #  Script Auditor wiring

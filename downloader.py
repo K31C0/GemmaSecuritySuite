@@ -11,12 +11,14 @@ import threading
 import urllib.request
 from typing import Callable, Optional
 
+from config import MODEL_FILE, MODELS_DIR
+
 # Real Gemma 2B IT GGUF model via Hugging Face.
 DEFAULT_DOWNLOAD_URL = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf?download=true"
 
-# Default destination inside the user's AppData folder.
-DEFAULT_DEST_DIR = os.path.join(os.environ.get("APPDATA", "."), "GemmaSecuritySuite", "models")
-DEFAULT_DEST_FILE = os.path.join(DEFAULT_DEST_DIR, "gemma-2-2b-it.gguf")
+# Destination resolved from config.py (portable, relative to toolkit root).
+DEFAULT_DEST_DIR = MODELS_DIR
+DEFAULT_DEST_FILE = MODEL_FILE
 
 
 class ModelManager:
@@ -26,7 +28,8 @@ class ModelManager:
     ----------
     file_path : str, optional
         Absolute path where the file should reside.
-        Defaults to ``%APPDATA%/LogPlatform/models/100MB.bin``.
+        Defaults to the portable ``data/models/`` directory
+        resolved by ``config.py``.
     url : str, optional
         Remote URL to fetch when the file is missing.
         Defaults to a public 100 MB test file.
