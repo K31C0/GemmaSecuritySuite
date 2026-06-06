@@ -72,6 +72,7 @@ class AppGUI(ctk.CTk):
 
         # Optional forensic logger — set by main.py after construction.
         self.custody_logger = None
+        self._dash_buttons: dict[str, ctk.CTkButton] = {}
 
         self._build_setup_screen()
         self._build_dashboard()
@@ -87,10 +88,48 @@ class AppGUI(ctk.CTk):
         self._build_evidence_vault()
         self._build_report_generator()
         self._build_pcap_analyzer()
-
+        
         # Start on the setup screen.
         self._current_frame: Optional[str] = None
         self.show_frame("setup")
+
+        # Global Keyboard Shortcuts
+        self.bind("<Escape>", lambda e: self.show_frame("dashboard"))
+        # Example shortcuts: Ctrl+1 for Log Analyzer, Ctrl+2 for Vault, etc.
+        self.bind("<Control-Key-1>", lambda e: self.show_frame("main"))
+        self.bind("<Control-Key-2>", lambda e: self.show_frame("script_auditor"))
+        self.bind("<Control-Key-3>", lambda e: self.show_frame("pcap_analyzer"))
+        self.bind("<Control-Key-4>", lambda e: self.show_frame("evidence_vault"))
+        
+        # Scaling shortcuts
+        self._current_scaling = 1.0
+        self.bind("<Control-plus>", self._zoom_in)
+        self.bind("<Control-equal>", self._zoom_in)
+        self.bind("<Control-minus>", self._zoom_out)
+
+        # Post-build: attach context menus to all textboxes
+        self._attach_menus_to_all_textboxes(self)
+
+    def _zoom_in(self, event=None) -> None:
+        self._current_scaling += 0.1
+        ctk.set_widget_scaling(self._current_scaling)
+        ctk.set_window_scaling(self._current_scaling)
+        self.show_toast(f"Zoom: {int(self._current_scaling*100)}%", "info")
+
+    def _zoom_out(self, event=None) -> None:
+        if self._current_scaling > 0.5:
+            self._current_scaling -= 0.1
+            ctk.set_widget_scaling(self._current_scaling)
+            ctk.set_window_scaling(self._current_scaling)
+            self.show_toast(f"Zoom: {int(self._current_scaling*100)}%", "info")
+
+    def _attach_menus_to_all_textboxes(self, parent_widget) -> None:
+        """Recursively find all CTkTextboxes and attach right-click menus."""
+        for child in parent_widget.winfo_children():
+            if isinstance(child, ctk.CTkTextbox):
+                self._attach_context_menu(child)
+            elif hasattr(child, "winfo_children"):
+                self._attach_menus_to_all_textboxes(child)
 
     # ==================================================================
     #  Shared helpers
@@ -100,9 +139,28 @@ class AppGUI(ctk.CTk):
         """Raise the frame identified by *name*."""
         frame = self._frames.get(name)
         if frame is None:
-            raise ValueError(f"Unknown frame: {name!r}  (valid: {list(self._frames)})")
+            # If a feature is disabled/hidden, ignore silently or toast
+            return
         frame.tkraise()
         self._current_frame = name
+
+    def show_toast(self, message: str, level: str = "info") -> None:
+        """Display a transient toast notification."""
+        colors = {
+            "info": SURFACE_ALT,
+            "success": "#1B5E20",
+            "warning": "#E65100",
+            "error": "#B71C1C",
+        }
+        fg_color = colors.get(level, SURFACE_ALT)
+
+        toast = ctk.CTkFrame(self, fg_color=fg_color, corner_radius=8, border_width=1, border_color=BORDER_SUBTLE)
+        lbl = ctk.CTkLabel(toast, text=message, font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color="#FFFFFF")
+        lbl.pack(padx=20, pady=10)
+
+        toast.place(relx=0.5, rely=0.92, anchor="s")
+
+        self.after(4000, toast.destroy)
 
     @staticmethod
     def _make_toolbar(parent, title_text: str, back_target: str | None = None):
@@ -151,6 +209,109 @@ class AppGUI(ctk.CTk):
         )
         lbl.grid(row=0, column=0, padx=16, pady=8, sticky="w")
         return info
+
+    def get_ui_state(self) -> dict[str, str]:
+        """Collect current state of user inputs for session auto-saving."""
+        try:
+            return {
+                "script_input": self.script_input_textbox.get("1.0", "end").strip(),
+                "audit_results": self.audit_results_textbox.get("1.0", "end").strip(),
+                "regex_input": self.regex_input_textbox.get("1.0", "end").strip(),
+                "regex_results": self.regex_results_textbox.get("1.0", "end").strip(),
+                "phishing_input": self.phishing_input_textbox.get("1.0", "end").strip(),
+                "phishing_results": self.phishing_results_textbox.get("1.0", "end").strip(),
+                "log_input": self.output_textbox.get("1.0", "end").strip(),
+                "chat_history": self.chat_history_textbox.get("1.0", "end").strip(),
+            }
+        except AttributeError:
+            return {}
+
+    def restore_ui_state(self, state: dict[str, str]) -> None:
+        """Restore UI textboxes from a saved session dictionary."""
+        def _set_text(textbox, text):
+            if not text: return
+            textbox.configure(state="normal")
+            textbox.delete("1.0", "end")
+            textbox.insert("end", text + "\n")
+            if textbox not in (self.script_input_textbox, self.regex_input_textbox, self.phishing_input_textbox, self.output_textbox):
+                textbox.configure(state="disabled")
+
+        try:
+            if "script_input" in state: _set_text(self.script_input_textbox, state["script_input"])
+            if "audit_results" in state: _set_text(self.audit_results_textbox, state["audit_results"])
+            if "regex_input" in state: _set_text(self.regex_input_textbox, state["regex_input"])
+            if "regex_results" in state: _set_text(self.regex_results_textbox, state["regex_results"])
+            if "phishing_input" in state: _set_text(self.phishing_input_textbox, state["phishing_input"])
+            if "phishing_results" in state: _set_text(self.phishing_results_textbox, state["phishing_results"])
+            if "log_input" in state: _set_text(self.output_textbox, state["log_input"])
+            if "chat_history" in state: _set_text(self.chat_history_textbox, state["chat_history"])
+        except AttributeError:
+            pass
+
+    def _attach_context_menu(self, textbox: ctk.CTkTextbox) -> None:
+        """Attach a right-click Copy / Select All / Export menu to a textbox."""
+        menu = tk.Menu(textbox, tearoff=0, bg=SURFACE, fg=TEXT_PRIMARY,
+                       activebackground=ACCENT, activeforeground="#000000",
+                       font=("Segoe UI", 11))
+        menu.add_command(label="📋  Copy", command=lambda: self._copy_from_textbox(textbox))
+        menu.add_command(label="📑  Select All", command=lambda: textbox.tag_add("sel", "1.0", "end"))
+        menu.add_separator()
+        menu.add_command(label="💾  Export to File…", command=lambda: self._export_textbox_content(textbox))
+
+        def _show_menu(event):
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+        textbox.bind("<Button-3>", _show_menu)
+
+    def _copy_from_textbox(self, textbox: ctk.CTkTextbox) -> None:
+        """Copy selected text (or all if nothing selected) to clipboard."""
+        try:
+            selected = textbox.selection_get()
+        except (tk.TclError, AttributeError):
+            selected = textbox.get("1.0", "end").strip()
+        if selected:
+            self.clipboard_clear()
+            self.clipboard_append(selected)
+            self.show_toast("Copied to clipboard", "success")
+
+    def _export_textbox_content(self, textbox: ctk.CTkTextbox) -> None:
+        """Export textbox contents to a text file."""
+        content = textbox.get("1.0", "end").strip()
+        if not content:
+            self.show_toast("Nothing to export", "warning")
+            return
+
+        from tkinter import filedialog as export_fd
+        path = export_fd.asksaveasfilename(
+            title="Export Output",
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            parent=self,
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.show_toast(f"Exported to {os.path.basename(path)}", "success")
+        except Exception as exc:
+            self.show_toast(f"Export failed: {exc}", "error")
+
+    @staticmethod
+    def _make_export_button(parent, gui_ref, textbox, row: int, col: int = 0):
+        """Create a small 'Export' button wired to a textbox."""
+        btn = ctk.CTkButton(
+            parent, text="💾 Export",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color="transparent", hover_color=SURFACE_ALT,
+            text_color=TEXT_SECONDARY, corner_radius=6,
+            height=30, width=80, border_width=0,
+            command=lambda: gui_ref._export_textbox_content(textbox),
+        )
+        return btn
 
     # ==================================================================
     #  Setup Screen
@@ -245,6 +406,7 @@ class AppGUI(ctk.CTk):
             command=lambda: self.show_frame("chat_assistant"),
         )
         btn_copilot.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=12, pady=(10, 20))
+        self._dash_buttons["chat_assistant"] = btn_copilot
 
         # Row 1: four regular cards across
         card_row1 = [
@@ -264,6 +426,7 @@ class AppGUI(ctk.CTk):
                 command=lambda t=target: self.show_frame(t),
             )
             btn.grid(row=1, column=col, sticky="nsew", padx=12, pady=10)
+            self._dash_buttons[target] = btn
 
         # Row 2: three regular cards across
         card_row2 = [
@@ -295,6 +458,7 @@ class AppGUI(ctk.CTk):
                 command=lambda t=target: self.show_frame(t),
             )
             btn.grid(row=0, column=i, sticky="nsew", padx=12, pady=0)
+            self._dash_buttons[target] = btn
 
         # Row 3: forensic tools (4 cards across)
         forensic_cards = [
@@ -314,6 +478,7 @@ class AppGUI(ctk.CTk):
                 command=lambda t=target: self.show_frame(t),
             )
             btn.grid(row=3, column=col, sticky="nsew", padx=12, pady=10)
+            self._dash_buttons[target] = btn
 
         # ── Seed animated background lines ───────────────────────────
         self._bg_lines: list[dict] = []
@@ -371,6 +536,29 @@ class AppGUI(ctk.CTk):
             canvas.itemconfig(line["id"], fill=line["colour"])
 
         self.after(30, self._animate_background)
+
+    def update_dashboard_card(self, target: str, is_degraded: bool, tooltip: str = "") -> None:
+        """Visually degrade a dashboard card if its underlying service fails."""
+        btn = self._dash_buttons.get(target)
+        if not btn:
+            return
+            
+        if is_degraded:
+            btn.configure(
+                fg_color="#301A1A",
+                border_color="#B71C1C",
+                text_color="#FF8A80"
+            )
+            if tooltip:
+                btn.configure(text=btn.cget("text").split("\n")[0] + "\n(Offline)")
+        else:
+            btn.configure(
+                fg_color=SURFACE,
+                border_color=BORDER_SUBTLE,
+                text_color=TEXT_PRIMARY
+            )
+            base_text = btn.cget("text").split("\n")[0]
+            btn.configure(text=base_text)
 
     # ==================================================================
     #  Environment Fingerprint

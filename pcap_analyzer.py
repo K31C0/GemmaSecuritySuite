@@ -23,6 +23,8 @@ import struct
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+import health_monitor
+
 try:
     import dpkt
     DPKT_AVAILABLE = True
@@ -678,6 +680,28 @@ class PcapAnalyzer:
             "beacons": self.detect_beaconing(),
             "summary": self.summarize(),
         }
+
+    # ── Health Monitoring ──────────────────────────────────────────────
+    
+    def health_check(self) -> health_monitor.ModuleHealth:
+        """Verify the PCAP analyzer is available."""
+        if not DPKT_AVAILABLE:
+            return health_monitor.ModuleHealth(
+                name="pcap_analyzer",
+                status="degraded",
+                message="dpkt not installed. PCAP analysis disabled.",
+                can_recover=False
+            )
+            
+        status_msg = "Ready"
+        if self._path:
+            status_msg = f"Loaded {len(self._packets)} packets from {os.path.basename(self._path)}"
+            
+        return health_monitor.ModuleHealth(
+            name="pcap_analyzer",
+            status="healthy",
+            message=status_msg
+        )
 
 
 # ── Quick self-test ──────────────────────────────────────────────────

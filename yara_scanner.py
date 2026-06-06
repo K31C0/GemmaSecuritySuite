@@ -15,8 +15,10 @@ all scans return empty results and a warning is logged.
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+import datetime
 
 import config
+import health_monitor
 
 # ── Graceful degradation if yara-python is not installed ─────────────
 try:
@@ -81,8 +83,23 @@ class YaraEngine:
         self._rule_count = 0
         self._available = _YARA_AVAILABLE
 
+        self._compile_time = ""
+
         if self._available:
             self._compile_rules()
+
+    def reload_rules(self) -> bool:
+        """Force a re-scan of the directories and recompile all rules.
+        Useful if the analyst added new .yar files while the app was running.
+        """
+        if not self._available:
+            return False
+            
+        self._rules = None
+        self._errors.clear()
+        self._rule_count = 0
+        self._compile_rules()
+        return self._rules is not None
 
     @property
     def available(self) -> bool:
@@ -201,11 +218,10 @@ class YaraEngine:
 
         try:
             self._rules = yara.compile(filepaths=filepaths)
-            # Count rules by doing a dummy scan on empty bytes
-            dummy = self._rules.match(data=b"")
             # We can't easily count rules without scanning, but we can
             # count filepaths as a proxy
             self._rule_count = len(filepaths)
+            self._compile_time = datetime.datetime.now().strftime("%H:%M:%S")
         except yara.SyntaxError as exc:
             self._errors.append(f"YARA syntax error: {exc}")
             # Try compiling rules one at a time to find the bad one
@@ -229,6 +245,7 @@ class YaraEngine:
             try:
                 self._rules = yara.compile(filepaths=good)
                 self._rule_count = len(good)
+                self._compile_time = datetime.datetime.now().strftime("%H:%M:%S")
             except Exception as exc:
                 self._errors.append(f"Final compile failed: {exc}")
 
@@ -253,6 +270,49 @@ class YaraEngine:
                 namespace=m.namespace or "",
             ))
         return results
+
+    # ── Health Monitoring ──────────────────────────────────────────────
+
+    def health_check(self) -> health_monitor.ModuleHealth:
+        """Verify the YARA engine status."""
+        if not self._available:
+            return health_monitor.ModuleHealth(
+                name="yara_scanner",
+                status="degraded",
+                message="yara-python not installed. Engine disabled.",
+                can_recover=False
+            )
+            
+        if self._rules is None:
+            msg = "Rules failed to compile."
+            if self._errors:
+                msg += f" {len(self._errors)} errors (e.g. {self._errors[0]})"
+            return health_monitor.ModuleHealth(
+                name="yara_scanner",
+                status="failed",
+                message=msg,
+                can_recover=True,
+                recovery_action="Reload rules"
+            )
+            
+        msg = f"OK ({self._rule_count} rule files loaded at {self._compile_time})"
+        status = "healthy"
+        
+        if self._errors:
+            status = "degraded"
+            msg += f" with {len(self._errors)} skipped files"
+            
+        return health_monitor.ModuleHealth(
+            name="yara_scanner",
+            status=status,
+            message=msg,
+            can_recover=True,
+            recovery_action="Reload rules"
+        )
+        
+    def recover(self) -> bool:
+        """Attempt to recover by recompiling rules."""
+        return self.reload_rules()
 
 
 # ── Quick self-test ──────────────────────────────────────────────────

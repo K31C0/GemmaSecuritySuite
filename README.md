@@ -145,10 +145,11 @@ The application runs [Google's Gemma 2 2B](https://huggingface.co/bartowski/gemm
    USB:\GemmaSecuritySuite\data\databases\IP2LOCATION-LITE-DB11.BIN
    USB:\GemmaSecuritySuite\data\databases\IP2LOCATION-LITE-ASN.BIN
    ```
-5. On the target machine, run:
+5. On the target machine, simply double-click the launcher script:
    ```bash
-   python main.py
+   Launch.bat
    ```
+   *The launcher will automatically verify the environment, ensure Python/dependencies are available, and boot the application.*
 
 ### Option B: Development Setup
 
@@ -271,6 +272,14 @@ The suite is being transformed into a comprehensive **Air-Gapped USB Incident Re
 - [x] **Encrypted Evidence Vault** — AES-256-GCM encrypted storage with PBKDF2 (600k iter), SHA-256 verification, append-only manifest
 - [x] **PCAP Traffic Analysis** — Offline `.pcap` parsing for DNS, HTTP, beaconing, TLS analysis
 - [x] **Automated Incident Reporting** — Export all session data as professional self-contained HTML reports
+
+### Phase 4: Plug-and-Play Launcher & Resilience ✅
+
+- [x] **Zero-Friction USB Launcher** — Single-click `Launch.bat` and `bootstrap.py` preflight checks verify environment dependencies before boot.
+- [x] **Module Health Checks & Auto-Recovery** — Centralized watchdog monitors all backend engines. Automatically reloads models, rules, and rotates logs upon failure.
+- [x] **Session Auto-Save & Restoration** — Prevents data loss during host reboots/crashes by periodically saving UI state and chat history.
+- [x] **Graceful Degradation** — If a dependency is missing on an isolated machine, the specific tool disables itself (with a helpful UI hint) rather than crashing the application.
+- [x] **UI Polish** — Toast notifications, degraded-state UI cards, AI output streaming, contextual right-click menus, and keyboard shortcuts.
 
 ### Phase 3: AI Capabilities & UX
 

@@ -33,6 +33,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 
 import config
+import health_monitor
 
 
 # ── Constants ────────────────────────────────────────────────────────
@@ -101,7 +102,27 @@ class Vault:
         self._dir = evidence_dir or config.EVIDENCE_DIR
         self._custody = custody_logger
         self._manifest_path = os.path.join(self._dir, "vault_manifest.jsonl")
+        self._manifest_bak = self._manifest_path + ".bak"
         os.makedirs(self._dir, exist_ok=True)
+        
+        # Try to recover manifest if main is missing/corrupted but bak exists
+        self._recover_manifest_if_needed()
+
+    def _recover_manifest_if_needed(self) -> None:
+        """Internal: Restore manifest from .bak if the primary is missing or unparseable."""
+        needs_recovery = False
+        if not os.path.isfile(self._manifest_path) and os.path.isfile(self._manifest_bak):
+            needs_recovery = True
+        elif os.path.isfile(self._manifest_path):
+            try:
+                # Test parse
+                self.list_items()
+            except Exception:
+                needs_recovery = True
+
+        if needs_recovery and os.path.isfile(self._manifest_bak):
+            import shutil
+            shutil.copy2(self._manifest_bak, self._manifest_path)
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -211,8 +232,8 @@ class Vault:
                 try:
                     data = json.loads(line)
                     items.append(VaultItem(**data))
-                except (json.JSONDecodeError, TypeError):
-                    continue
+                except (json.JSONDecodeError, TypeError) as exc:
+                    raise ValueError(f"Corrupt manifest: {exc}")
         return items
 
     def extract(
@@ -322,6 +343,38 @@ class Vault:
         actual_size = os.path.getsize(vault_path)
         return actual_size >= min_size
 
+    def audit(self) -> Dict[str, List[str]]:
+        """Audit the vault for missing files or orphaned files.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing 'missing_files' (in manifest but not on disk)
+            and 'orphaned_files' (on disk but not in manifest).
+        """
+        result = {"missing_files": [], "orphaned_files": []}
+        
+        # 1. Check for missing files
+        try:
+            items = self.list_items()
+            manifest_files = set(item.vault_filename for item in items)
+        except Exception:
+            # If manifest is totally broken, we can't do a full audit
+            return result
+            
+        for item in items:
+            vault_path = os.path.join(self._dir, item.vault_filename)
+            if not os.path.isfile(vault_path):
+                result["missing_files"].append(item.vault_filename)
+                
+        # 2. Check for orphaned files
+        if os.path.isdir(self._dir):
+            for file in os.listdir(self._dir):
+                if file.endswith(".vault") and file not in manifest_files:
+                    result["orphaned_files"].append(file)
+                    
+        return result
+
     # ── Internal ─────────────────────────────────────────────────────
 
     def _find_item(self, item_id: str) -> VaultItem:
@@ -333,10 +386,78 @@ class Vault:
 
     def _append_manifest(self, item: VaultItem) -> None:
         """Append a VaultItem to the manifest JSONL file."""
+        import shutil
+        
+        # Backup before write
+        if os.path.isfile(self._manifest_path):
+            try:
+                shutil.copy2(self._manifest_path, self._manifest_bak)
+            except OSError:
+                pass
+                
         with open(self._manifest_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(item), ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
+
+    # ── Health Monitoring ──────────────────────────────────────────────
+    
+    def health_check(self) -> health_monitor.ModuleHealth:
+        """Verify the vault's integrity and writability."""
+        try:
+            # Test manifest read
+            items = self.list_items()
+            
+            # Test writability of directory by trying to touch a temp file
+            test_file = os.path.join(self._dir, ".healthcheck")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
+            
+            # Run audit
+            audit_result = self.audit()
+            missing = len(audit_result["missing_files"])
+            orphans = len(audit_result["orphaned_files"])
+            
+            if missing > 0 or orphans > 0:
+                return health_monitor.ModuleHealth(
+                    name="evidence_vault",
+                    status="degraded",
+                    message=f"Vault has {missing} missing files, {orphans} orphans",
+                    can_recover=False  # Manual cleanup needed
+                )
+                
+            return health_monitor.ModuleHealth(
+                name="evidence_vault",
+                status="healthy",
+                message=f"Vault OK ({len(items)} items stored)"
+            )
+            
+        except ValueError as exc: # Manifest corrupt
+            return health_monitor.ModuleHealth(
+                name="evidence_vault",
+                status="failed",
+                message=f"Manifest corrupted: {exc}",
+                can_recover=True,
+                recovery_action="Restore manifest from .bak"
+            )
+        except OSError as exc:
+            return health_monitor.ModuleHealth(
+                name="evidence_vault",
+                status="failed",
+                message=f"Storage unwritable: {exc}",
+                can_recover=False
+            )
+
+    def recover(self) -> bool:
+        """Attempt to restore the manifest from backup."""
+        try:
+            self._recover_manifest_if_needed()
+            # Verify the recovery worked
+            self.list_items()
+            return True
+        except Exception:
+            return False
 
 
 # ── Key derivation ───────────────────────────────────────────────────

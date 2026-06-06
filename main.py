@@ -16,6 +16,7 @@ from typing import Optional
 
 import config
 import os
+import sys
 
 
 def main() -> None:
@@ -28,10 +29,69 @@ def main() -> None:
     custody = CustodyLogger()
     custody.log_app_start()
 
+    import health_monitor
+    monitor = health_monitor.HealthMonitor(custody_logger=custody)
+    health_monitor.monitor = monitor
+    monitor.register("custody_logger", custody.health_check, custody.recover)
+
     app = AppGUI()
     app.custody_logger = custody     # inject for GUI-internal callbacks
     mgr = ModelManager()
     local_ai = LocalAI()          # persistent instance, shared across audits
+    monitor.register("ai_inference", local_ai.health_check, local_ai.reload_model)
+
+    from session_manager import SessionManager
+    session = SessionManager(
+        get_state_fn=app.get_ui_state,
+        restore_state_fn=app.restore_ui_state,
+        custody_logger=custody,
+    )
+    session.load()
+    session.start_autosave(interval=30.0)
+
+    # Global Exception Handler
+    def global_exception_handler(exc_type, exc_value, exc_traceback):
+        import traceback
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+            
+        tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        custody.record("fatal_crash", "main", detail=f"{exc_type.__name__}: {exc_value}\n{tb_str}")
+        
+        # Try to save session state before dying
+        try:
+            session.save()
+        except Exception:
+            pass
+            
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = global_exception_handler
+    
+    # Health monitor UI wiring
+    def _on_health_change(status: health_monitor.ModuleHealth) -> None:
+        target_cards = []
+        if status.name == "ai_inference":
+            target_cards = ["chat_assistant", "script_auditor", "regex_wizard", "phishing_analyzer", "main"]
+        elif status.name == "yara_scanner":
+            target_cards = ["script_auditor"]
+        elif status.name == "pcap_analyzer":
+            target_cards = ["pcap_analyzer"]
+        elif status.name == "evidence_vault":
+            target_cards = ["evidence_vault"]
+            
+        is_degraded = status.status in ("degraded", "failed")
+        
+        # Update UI safely
+        for card in target_cards:
+            app.after(0, app.update_dashboard_card, card, is_degraded, status.message)
+            
+        # Show toast for state changes
+        level = "error" if status.status == "failed" else "warning" if status.status == "degraded" else "success"
+        app.after(0, app.show_toast, f"[{status.name}] {status.status.upper()}: {status.message}", level)
+
+    monitor.on_status_change = _on_health_change
 
     # ==================================================================
     #  Download wiring
@@ -128,6 +188,7 @@ def main() -> None:
 
     from evidence_vault import Vault
     vault = Vault(custody_logger=custody)
+    monitor.register("evidence_vault", vault.health_check, vault.recover)
 
     def _refresh_vault_list() -> None:
         """Refresh the vault item list display."""
@@ -294,7 +355,7 @@ def main() -> None:
 
                 # AI analysis outputs from textboxes.
                 try:
-                    audit_text = app.audit_output_textbox.get(
+                    audit_text = app.audit_results_textbox.get(
                         "1.0", "end").strip()
                     if audit_text:
                         report.add_ai_analysis("Script Audit", audit_text)
@@ -302,7 +363,7 @@ def main() -> None:
                     pass
 
                 try:
-                    phishing_text = app.phishing_output_textbox.get(
+                    phishing_text = app.phishing_results_textbox.get(
                         "1.0", "end").strip()
                     if phishing_text:
                         report.add_ai_analysis(
@@ -398,6 +459,7 @@ def main() -> None:
 
     from pcap_analyzer import PcapAnalyzer, DPKT_AVAILABLE
     pcap_engine = PcapAnalyzer(custody_logger=custody)
+    monitor.register("pcap_analyzer", pcap_engine.health_check)
 
     def _load_pcap() -> None:
         """Open file picker, load and analyse a PCAP file."""
@@ -519,6 +581,7 @@ def main() -> None:
     # Initialise the YARA engine once at startup.
     from yara_scanner import YaraEngine
     yara_engine = YaraEngine()
+    monitor.register("yara_scanner", yara_engine.health_check, yara_engine.recover)
     if yara_engine.available:
         custody.record("yara_engine_init", "yara_scanner",
                        detail=f"Loaded {yara_engine.rule_count} rule file(s)")
@@ -786,12 +849,15 @@ def main() -> None:
 
     def _on_close() -> None:
         """Graceful shutdown: close custody log with integrity hash."""
+        monitor.stop_watchdog()
+        session.stop_autosave()
         custody.log_app_stop()
         custody.close()
         app.destroy()
 
     app.protocol("WM_DELETE_WINDOW", _on_close)
 
+    monitor.start_watchdog()
     app.after(300, _start)
     app.mainloop()
 

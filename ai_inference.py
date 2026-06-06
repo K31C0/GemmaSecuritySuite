@@ -6,12 +6,15 @@ chat-completion inference on a background thread so callers
 (e.g. the GUI) never block.
 """
 
+import gc
 import os
 import threading
+import time
 from typing import Callable, Optional
 
 from llama_cpp import Llama
 
+import health_monitor
 from config import MODEL_FILE
 
 # Portable model path resolved from config.py (relative to toolkit root).
@@ -49,6 +52,7 @@ class LocalAI:
         system_prompt: str = "",
         on_complete: Optional[Callable[[str], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
+        on_stream: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Run analysis on *text* in a background thread.
 
@@ -73,9 +77,9 @@ class LocalAI:
         self._busy = True
         self._thread = threading.Thread(
             target=self._worker,
-            args=(text, system_prompt, on_complete, on_error),
+            args=(text, system_prompt, on_complete, on_error, on_stream),
             daemon=True,
-            name="LocalAI-Inference",
+            name="InferenceWorker",
         )
         self._thread.start()
 
@@ -108,6 +112,10 @@ class LocalAI:
                 "Please download it first from the Setup screen."
             )
 
+        # Force garbage collection in case we are reloading and the old
+        # model hasn't been fully freed yet.
+        gc.collect()
+
         # Auto-detect hardware and derive optimal Llama() parameters.
         from hardware_profiler import detect_hardware, get_llama_kwargs
         self.hw_profile = detect_hardware()
@@ -123,6 +131,19 @@ class LocalAI:
                 f"Failed to load model: {exc}"
             ) from exc
 
+    def reload_model(self) -> bool:
+        """Force a full unload and reload of the model from disk.
+        Useful for recovering from a corrupted state in memory.
+        """
+        try:
+            if self.llm is not None:
+                del self.llm
+                self.llm = None
+            self._load_model()
+            return True
+        except Exception:
+            return False
+
     # ------------------------------------------------------------------
     #  Internal worker
     # ------------------------------------------------------------------
@@ -133,38 +154,55 @@ class LocalAI:
         system_prompt: str,
         on_complete: Optional[Callable[[str], None]],
         on_error: Optional[Callable[[str], None]],
+        on_stream: Optional[Callable[[str], None]],
     ) -> None:
         try:
             # ── Lazy-load the model on first call ────────────────────
             if self.llm is None:
                 self._load_model()
 
-            # ── Build the chat messages ──────────────────────────────
-            # Gemma does not support the "system" role, so we prepend
-            # the system instructions into the user message.
             user_content = f"{system_prompt}{text}" if system_prompt else text
             messages: list[dict] = [
                 {"role": "user", "content": user_content},
             ]
 
-            # ── Run inference ────────────────────────────────────────
-            response = self.llm.create_chat_completion(
-                messages=messages,
-                max_tokens=1024,
-                temperature=0.7,
-                top_p=0.9,
-            )
-
-            # ── Extract the reply text ───────────────────────────────
-            result = (
-                response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            ).strip()
+            # ── Run inference with retry logic ───────────────────────
+            result = ""
+            retries = 1
+            
+            for attempt in range(retries + 1):
+                try:
+                    # Run actual inference
+                    stream = self.llm.create_chat_completion(
+                        messages=messages,
+                        max_tokens=1024,
+                        temperature=0.7,
+                        top_p=0.9,
+                        stream=True,
+                    )
+                    
+                    result_chunks = []
+                    for chunk in stream:
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        if "content" in delta:
+                            content = delta["content"]
+                            result_chunks.append(content)
+                            if on_stream:
+                                on_stream(content)
+                                
+                    result = "".join(result_chunks)
+                    break  # Success
+                except Exception as exc:
+                    if attempt < retries:
+                        print(f"Inference error: {exc}. Attempting model reload...")
+                        self.reload_model()
+                    else:
+                        raise RuntimeError(f"Inference failed after {retries} retries: {exc}")
 
             if not result:
-                result = "(Model returned an empty response.)"
+                raise RuntimeError("No response returned from model.")
 
+            # ── Callback on completion ───────────────────────────────
             if on_complete:
                 on_complete(result)
 
@@ -173,6 +211,50 @@ class LocalAI:
                 on_error(str(exc))
         finally:
             self._busy = False
+
+    # ------------------------------------------------------------------
+    #  Health Monitoring
+    # ------------------------------------------------------------------
+
+    def health_check(self) -> health_monitor.ModuleHealth:
+        """Verify the AI model is present and operational."""
+        # 1. Check if model file exists
+        if not os.path.isfile(self.model_path):
+            return health_monitor.ModuleHealth(
+                name="ai_inference",
+                status="degraded",
+                message="Model file missing (download required)",
+                can_recover=False
+            )
+            
+        # 2. Check if thread is stuck
+        if self._busy and self._thread and self._thread.is_alive():
+            # We can't easily timeout llama_cpp blocking calls in python,
+            # but we can detect if it's been running for an abnormal amount of time.
+            return health_monitor.ModuleHealth(
+                name="ai_inference",
+                status="healthy",
+                message="Inference in progress..."
+            )
+            
+        # 3. If model is loaded, do a fast tokenizer check to ensure memory isn't fully corrupted
+        if self.llm is not None:
+            try:
+                self.llm.tokenize(b"health check test string")
+            except Exception as exc:
+                return health_monitor.ModuleHealth(
+                    name="ai_inference",
+                    status="failed",
+                    message=f"Model in memory corrupted: {exc}",
+                    can_recover=True,
+                    recovery_action="Reloading model"
+                )
+                
+        return health_monitor.ModuleHealth(
+            name="ai_inference",
+            status="healthy",
+            message="Ready"
+        )
 
 
 # ------------------------------------------------------------------
